@@ -68,8 +68,9 @@ def handle_document(message):
         with conn.cursor() as cur:
             insert_query = """
                 INSERT INTO domains (name, collected_date)
-                VALUES (%s, %s)
+                VALUES %s
                 ON CONFLICT (name) DO NOTHING;
+
             """
             data = [(domain, collected_date) for domain in domains]
             execute_values(cur,insert_query, data,page_size=1000)
