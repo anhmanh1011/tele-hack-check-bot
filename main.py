@@ -38,7 +38,7 @@ def send_welcome(message):
 def handle_document(message):
     file_info = bot.get_file(message.document.file_id)
     downloaded_file = bot.download_file(file_info.file_path)
-    print('Downloaded to {}'.format(downloaded_file))
+    # print('Downloaded to {}'.format(downloaded_file))
     file_path = os.path.join(DOWNLOAD_DIR, message.document.file_name)
     with open(file_path, 'wb') as new_file:
         new_file.write(downloaded_file)
@@ -74,7 +74,6 @@ def handle_document(message):
             data = [(domain, collected_date) for domain in domains]
             execute_values(cur,insert_query, data,page_size=1000)
             conn.commit()
-            rows_after = cur.rowcount
             print('inserted', len(domains))
             bot.reply_to(message, f"Đã insert thành công : {len(domains)} domains")
     except Exception as e:
