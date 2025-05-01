@@ -12,6 +12,7 @@ bot = telebot.TeleBot(API_TOKEN)
 DOWNLOAD_DIR = 'downloads'
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 db_url = os.environ.get("DATABASE_URL")
+print(db_url)
 # db_url = 'postgresql://postgres:RJjCiHGBSvgkbgzGhtubrgMipdnsjaFa@hopper.proxy.rlwy.net:47525/railway'
 
 # Parse the URL
