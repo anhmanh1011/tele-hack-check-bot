@@ -76,4 +76,5 @@ def handle_document(message):
         bot.reply_to(message, "Có lỗi xảy ra khi tải tệp.")
 
 # Bắt đầu polling
+bot.remove_webhook()
 bot.infinity_polling()
