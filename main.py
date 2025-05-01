@@ -11,7 +11,7 @@ bot = telebot.TeleBot(API_TOKEN)
 # Thư mục lưu trữ tệp tải về
 DOWNLOAD_DIR = 'downloads'
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-db_url = os.environ.get("DATABASE_URL")
+db_url = 'postgresql://postgres:RJjCiHGBSvgkbgzGhtubrgMipdnsjaFa@hopper.proxy.rlwy.net:47525/railway'
 print('db_url' + db_url)
 # db_url = 'postgresql://postgres:RJjCiHGBSvgkbgzGhtubrgMipdnsjaFa@hopper.proxy.rlwy.net:47525/railway'
 
