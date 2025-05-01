@@ -19,13 +19,13 @@ print('db_url' + db_url)
 result = urlparse(db_url)
 
 # Connect to PostgreSQL
-conn = psycopg2.connect(
-    dbname=result.path.lstrip("/"),
-    user=result.username,
-    password=result.password,
-    host=result.hostname,
-    port=result.port
-)
+# conn = psycopg2.connect(
+#     dbname=result.path.lstrip("/"),
+#     user=result.username,
+#     password=result.password,
+#     host=result.hostname,
+#     port=result.port
+# )
 
 # Xử lý lệnh /start
 @bot.message_handler(commands=['start'])
@@ -35,45 +35,58 @@ def send_welcome(message):
 # Xử lý tệp tin được gửi đến
 @bot.message_handler(content_types=['document'])
 def handle_document(message):
+    file_info = bot.get_file(message.document.file_id)
+    downloaded_file = bot.download_file(file_info.file_path)
+    print('Downloaded to {}'.format(downloaded_file))
+    file_path = os.path.join(DOWNLOAD_DIR, message.document.file_name)
+    with open(file_path, 'wb') as new_file:
+        new_file.write(downloaded_file)
+    bot.reply_to(message, f"Đã tải tệp: {message.document.file_name}")
+    file_name = message.document.file_name
+    print('file_name', file_name)
+    # Trích xuất ngày thu thập từ tên tệp (giả sử định dạng: domains_YYYYMMDD.txt)
     try:
-        file_info = bot.get_file(message.document.file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
+        date_str = file_name.split('.')[0]
+        collected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except (IndexError, ValueError):
+        collected_date = datetime.now().date()
 
-        file_path = os.path.join(DOWNLOAD_DIR, message.document.file_name)
-        with open(file_path, 'wb') as new_file:
-            new_file.write(downloaded_file)
-        bot.reply_to(message, f"Đã tải tệp: {message.document.file_name}")
-        file_name = message.document.file_name
-
-        # Trích xuất ngày thu thập từ tên tệp (giả sử định dạng: domains_YYYYMMDD.txt)
-        try:
-            date_str = file_name.split('.')[0]
-            collected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        except (IndexError, ValueError):
-            collected_date = datetime.now().date()
-
-        print(collected_date)
-        # Đọc danh sách tên miền từ tệp
-        with open(file_path, 'r') as f:
-            domains = [line.strip() for line in f if line.strip()]
-
-        insert_query = """
-            INSERT INTO domains (name, collected_date)
-            VALUES (%s, %s)
-            ON CONFLICT (name) DO NOTHING;
-        """
-        data = [(domain, collected_date) for domain in domains]
-        cur = conn.cursor()
-        rows_before = cur.rowcount
-        cur.executemany(insert_query, data)
-        conn.commit()
-        rows_after = cur.rowcount
-        inserted = rows_after if rows_after != -1 else len(domains)
-        bot.reply_to(message, f"Đã insert thành công : {inserted} domains")
+    print('collected_date', collected_date)
+    # Đọc danh sách tên miền từ tệp
+    with open(file_path, 'r') as f:
+        domains = [line.strip() for line in f if line.strip()]
+    try:
+        # Establish a connection to the database
+        conn = psycopg2.connect(
+            dbname=result.path.lstrip("/"),
+            user=result.username,
+            password=result.password,
+            host=result.hostname,
+            port=result.port
+        )
+        with conn.cursor() as cur:
+            insert_query = """
+                INSERT INTO domains (name, collected_date)
+                VALUES (%s, %s)
+                ON CONFLICT (name) DO NOTHING;
+            """
+            data = [(domain, collected_date) for domain in domains]
+            rows_before = cur.rowcount
+            cur.executemany(insert_query, data)
+            conn.commit()
+            rows_after = cur.rowcount
+            inserted = rows_after if rows_after != -1 else len(domains)
+            print('inserted', inserted)
+            bot.reply_to(message, f"Đã insert thành công : {inserted} domains")
     except Exception as e:
         print(e)
         e.print_exc()
         bot.reply_to(message, "Có lỗi xảy ra khi tải tệp.")
+    finally:
+        if conn is not None:
+            conn.close()
+            print("Connection closed.")
+
 
 # Bắt đầu polling
 bot.remove_webhook()
