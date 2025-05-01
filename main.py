@@ -3,6 +3,7 @@ from datetime import datetime
 import psycopg2
 from urllib.parse import urlparse
 import telebot
+from psycopg2.extras import execute_values, execute_batch
 
 # Thay thế 'YOUR_BOT_TOKEN' bằng token thực tế của bạn từ BotFather
 API_TOKEN = '7888902716:AAFmgRgDaYiz8OcfqlRLgNwf13KfZ0z7yak'
@@ -71,13 +72,11 @@ def handle_document(message):
                 ON CONFLICT (name) DO NOTHING;
             """
             data = [(domain, collected_date) for domain in domains]
-            rows_before = cur.rowcount
-            cur.executemany(insert_query, data)
+            execute_batch(cur,insert_query, data,page_size=1000)
             conn.commit()
             rows_after = cur.rowcount
-            inserted = rows_after if rows_after != -1 else len(domains)
-            print('inserted', inserted)
-            bot.reply_to(message, f"Đã insert thành công : {inserted} domains")
+            print('inserted', len(domains))
+            bot.reply_to(message, f"Đã insert thành công : {len(domains)} domains")
     except Exception as e:
         print(e)
         e.print_exc()
