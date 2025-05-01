@@ -72,7 +72,7 @@ def handle_document(message):
                 ON CONFLICT (name) DO NOTHING;
             """
             data = [(domain, collected_date) for domain in domains]
-            execute_batch(cur,insert_query, data,page_size=1000)
+            execute_values(cur,insert_query, data,page_size=1000)
             conn.commit()
             rows_after = cur.rowcount
             print('inserted', len(domains))
