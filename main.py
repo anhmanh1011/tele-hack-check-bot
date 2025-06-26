@@ -44,6 +44,7 @@ async def check_domain_hc(client, domain):
         logging.info(f"[DOMAIN: {domain}] [RESULTS: {len(breaches.results)}] [EMAILS: {emails}]")
         return emails
     except Exception as e:
+        print(e)
         logging.error(f"[DOMAIN: {domain}] Lỗi khi gọi hackcheck-py: {e}")
         raise e
 
@@ -67,7 +68,7 @@ def handle_document(message):
         domains = [line.strip() for line in f if line.strip()]
 
     async def process_domains(result_path):
-        batch_size = 10
+        batch_size = 7
         total = len(domains)
         try:
             async with HackCheckClient(HACKCHECK_API_KEY) as client:
