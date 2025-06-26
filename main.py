@@ -5,9 +5,11 @@ from datetime import datetime
 import telebot
 import json
 
-# Thay thế 'YOUR_BOT_TOKEN' bằng token thực tế của bạn từ BotFather
-API_TOKEN = '7624114226:AAH5v2z_BZ8B9S1yefOfBWGIgyPoEKk1DjI'
-HACKCHECK_API_KEY = 'hc_r3sroj6tmv9ftgtxn95wujjf'  # <-- Replace with your real API key
+# Đọc cấu hình từ file config.json
+with open('config.json', 'r') as config_file:
+    config = json.load(config_file)
+API_TOKEN = config['API_TOKEN']
+HACKCHECK_API_KEY = config['HACKCHECK_API_KEY']
 bot = telebot.TeleBot(API_TOKEN)
 
 # Thư mục lưu trữ tệp tải về
@@ -55,6 +57,14 @@ def handle_document(message):
                 # Extract emails from the 'results' list
                 emails = {item['email'] for item in json_data.get('results', []) if 'email' in item and item['email']}
                 found_domains.update(emails)
+            elif response.status_code == 401:
+                print('IP hoặc API key không hợp lệ')
+                bot.reply_to(message, "IP hoặc API key không hợp lệ")
+                return
+            else:
+                print('response', response)
+                bot.reply_to(message, "Lỗi không xác định")
+                return
         except Exception as e:
             print(f"Error checking domain {domain}: {e}")
         # Rate limit: 10 requests per second
