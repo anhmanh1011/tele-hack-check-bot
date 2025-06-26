@@ -1,42 +1,34 @@
 import os
+import time
+import requests
 from datetime import datetime
-import psycopg2
-from urllib.parse import urlparse
 import telebot
-from psycopg2.extras import execute_values, execute_batch
+import json
 
 # Thay thế 'YOUR_BOT_TOKEN' bằng token thực tế của bạn từ BotFather
-API_TOKEN = '7888902716:AAFmgRgDaYiz8OcfqlRLgNwf13KfZ0z7yak'
+API_TOKEN = '7624114226:AAH5v2z_BZ8B9S1yefOfBWGIgyPoEKk1DjI'
+HACKCHECK_API_KEY = 'hc_r3sroj6tmv9ftgtxn95wujjf'  # <-- Replace with your real API key
 bot = telebot.TeleBot(API_TOKEN)
 
 # Thư mục lưu trữ tệp tải về
 DOWNLOAD_DIR = 'downloads'
+RESULTS_DIR = 'results'
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-db_url = 'postgresql://postgres:RJjCiHGBSvgkbgzGhtubrgMipdnsjaFa@hopper.proxy.rlwy.net:47525/railway'
-print('db_url' + db_url)
-# db_url = 'postgresql://postgres:RJjCiHGBSvgkbgzGhtubrgMipdnsjaFa@hopper.proxy.rlwy.net:47525/railway'
-
-# Parse the URL
-result = urlparse(db_url)
-
-# Connect to PostgreSQL
-# conn = psycopg2.connect(
-#     dbname=result.path.lstrip("/"),
-#     user=result.username,
-#     password=result.password,
-#     host=result.hostname,
-#     port=result.port
-# )
+os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # Xử lý lệnh /start
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Chào bạn! Gửi cho tôi một tệp tin và tôi sẽ tải nó về.")
+    bot.reply_to(message, "Chào bạn! Gửi cho tôi một tệp TXT chứa danh sách domain (mỗi dòng một domain). Tôi sẽ kiểm tra từng domain trên HackCheck API và trả về danh sách domain đã được tìm thấy.")
+
 
 # Xử lý tệp tin được gửi đến
 @bot.message_handler(content_types=['document'])
 def handle_document(message):
     file_info = bot.get_file(message.document.file_id)
+    if not file_info.file_path:
+        bot.reply_to(message, "Không thể lấy đường dẫn tệp từ Telegram.")
+        return
     downloaded_file = bot.download_file(file_info.file_path)
     # print('Downloaded to {}'.format(downloaded_file))
     file_path = os.path.join(DOWNLOAD_DIR, message.document.file_name)
@@ -45,46 +37,40 @@ def handle_document(message):
     bot.reply_to(message, f"Đã tải tệp: {message.document.file_name}")
     file_name = message.document.file_name
     print('file_name', file_name)
-    # Trích xuất ngày thu thập từ tên tệp (giả sử định dạng: domains_YYYYMMDD.txt)
-    try:
-        date_str = file_name.split('.')[0]
-        collected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-    except (IndexError, ValueError):
-        collected_date = datetime.now().date()
-
-    print('collected_date', collected_date)
     # Đọc danh sách tên miền từ tệp
     with open(file_path, 'r') as f:
         domains = [line.strip() for line in f if line.strip()]
-    try:
-        # Establish a connection to the database
-        conn = psycopg2.connect(
-            dbname=result.path.lstrip("/"),
-            user=result.username,
-            password=result.password,
-            host=result.hostname,
-            port=result.port
-        )
-        with conn.cursor() as cur:
-            insert_query = """
-                INSERT INTO domains (name, collected_date)
-                VALUES %s
-                ON CONFLICT (name) DO NOTHING;
 
-            """
-            data = [(domain, collected_date) for domain in domains]
-            execute_values(cur,insert_query, data,page_size=1000)
-            conn.commit()
-            print('inserted', len(domains))
-            bot.reply_to(message, f"Đã insert thành công : {len(domains)} domains")
-    except Exception as e:
-        print(e)
-        e.print_exc()
-        bot.reply_to(message, "Có lỗi xảy ra khi tải tệp.")
-    finally:
-        if conn is not None:
-            conn.close()
-            print("Connection closed.")
+    found_domains = set()
+    for idx, domain in enumerate(domains):
+        url = f"https://api.hackcheck.io/search/{HACKCHECK_API_KEY}/domain/{domain}"
+        try:
+            response = requests.get(url, timeout=10)
+            print('response', response)
+            if response.status_code == 200:
+                data = response.content
+                if isinstance(data, bytes):
+                    data = data.decode('utf-8')
+                json_data = json.loads(data)
+                # Extract emails from the 'results' list
+                emails = {item['email'] for item in json_data.get('results', []) if 'email' in item and item['email']}
+                found_domains.update(emails)
+        except Exception as e:
+            print(f"Error checking domain {domain}: {e}")
+        # Rate limit: 10 requests per second
+      
+        time.sleep(0.1)  # ~10 req/sec
+
+    # Ghi kết quả vào file
+    result_filename = f"found_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    result_path = os.path.join(RESULTS_DIR, result_filename)
+    with open(result_path, 'w') as f:
+        for email in found_domains:
+            f.write(email + '\n')
+
+    # Gửi file kết quả về cho user
+    with open(result_path, 'rb') as result_file:
+        bot.send_document(reply_to_message_id=message.message_id, chat_id=message.chat.id, document=result_file, caption=f"Các domain đã được tìm thấy: {len(found_domains)}")
 
 
 # Bắt đầu polling
