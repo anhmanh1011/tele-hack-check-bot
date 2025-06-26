@@ -1,3 +1,4 @@
 downloads/
 results/
-venv/ 
+venv/
+api.log
