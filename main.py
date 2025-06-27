@@ -68,21 +68,15 @@ def handle_document(message):
         domains = [line.strip() for line in f if line.strip()]
 
     async def process_domains(result_path):
-        batch_size = 4
-        total = len(domains)
         try:
             async with HackCheckClient(HACKCHECK_API_KEY) as client:
-                for i in range(0, total, batch_size):
-                    batch = domains[i:i+batch_size]
-                    tasks = [check_domain_hc(client, domain) for domain in batch]
-                    results = await asyncio.gather(*tasks)
-                    # Ghi kết quả batch vào file ngay
-                    with open(result_path, 'a') as f:
-                        for idx, result in enumerate(results):
-                            if isinstance(result, set):
-                                for email in result:
-                                    f.write(email + '\n')
-                    time.sleep(1)
+                for domain in domains:
+                    result = await check_domain_hc(client, domain)
+                    if isinstance(result, set):
+                        with open(result_path, 'a') as f:
+                            for email in result:
+                                f.write(email + '\n')
+                    await asyncio.sleep(0.1)  # Đảm bảo không vượt quá 10 requests/giây
         except Exception as e:
             logging.error(f"Lỗi khi xử lý tệp: {e}")
             bot.reply_to(message, f"Lỗi khi xử lý tệp: {e}")
