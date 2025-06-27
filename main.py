@@ -76,7 +76,7 @@ def handle_document(message):
                         with open(result_path, 'a') as f:
                             for email in result:
                                 f.write(email + '\n')
-                    await asyncio.sleep(0.1)  # Đảm bảo không vượt quá 10 requests/giây
+                    await asyncio.sleep(0.07)  # Đảm bảo không vượt quá 10 requests/giây
         except Exception as e:
             logging.error(f"Lỗi khi xử lý tệp: {e}")
             bot.reply_to(message, f"Lỗi khi xử lý tệp: {e}")
