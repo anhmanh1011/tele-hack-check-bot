@@ -68,7 +68,7 @@ def handle_document(message):
         domains = [line.strip() for line in f if line.strip()]
 
     async def process_domains(result_path):
-        batch_size = 5
+        batch_size = 4
         total = len(domains)
         try:
             async with HackCheckClient(HACKCHECK_API_KEY) as client:
