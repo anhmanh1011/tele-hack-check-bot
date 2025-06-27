@@ -68,7 +68,7 @@ def handle_document(message):
         domains = [line.strip() for line in f if line.strip()]
 
     async def process_domains(result_path):
-        batch_size = 7
+        batch_size = 5
         total = len(domains)
         try:
             async with HackCheckClient(HACKCHECK_API_KEY) as client:
@@ -82,7 +82,7 @@ def handle_document(message):
                             if isinstance(result, set):
                                 for email in result:
                                     f.write(email + '\n')
-                    await asyncio.sleep(1)  # Đảm bảo không vượt quá rate limit
+                    time.sleep(1)
         except Exception as e:
             logging.error(f"Lỗi khi xử lý tệp: {e}")
             bot.reply_to(message, f"Lỗi khi xử lý tệp: {e}")
