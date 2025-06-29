@@ -46,7 +46,8 @@ async def check_domain_hc(client, domain):
     except Exception as e:
         print(e)
         logging.error(f"[DOMAIN: {domain}] Lỗi khi gọi hackcheck-py: {e}")
-        raise e
+        return set()
+        # raise e
 
 # Xử lý tệp tin được gửi đến
 @bot.message_handler(content_types=['document'])
@@ -76,10 +77,11 @@ def handle_document(message):
                         with open(result_path, 'a') as f:
                             for email in result:
                                 f.write(email + '\n')
-                    await asyncio.sleep(0.07)  # Đảm bảo không vượt quá 10 requests/giây
+                    await asyncio.sleep(0.05)  # Đảm bảo không vượt quá 10 requests/giây
         except Exception as e:
             logging.error(f"Lỗi khi xử lý tệp: {e}")
             bot.reply_to(message, f"Lỗi khi xử lý tệp: {e}")
+            
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
