@@ -2,3 +2,5 @@ downloads/
 results/
 venv/
 api.log
+_pycache_/
+config.json
