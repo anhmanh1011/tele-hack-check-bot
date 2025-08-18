@@ -5,6 +5,8 @@ from datetime import datetime
 import telebot
 import json
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Đọc cấu hình từ file config.json
 with open('config.json', 'r') as config_file:
@@ -22,6 +24,10 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 # Thiết lập logging
 logging.basicConfig(filename='api.log', level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
+# Cấu hình rate limiting
+MAX_CONCURRENT_REQUESTS = 5  # Xử lý 5 request đồng thời
+REQUEST_DELAY = 0.05  # 50ms giữa các request (cho phép 20 request/giây)
+
 # Xử lý lệnh /start
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -33,10 +39,14 @@ def check_domain_hc(domain):
         # URL theo format CURL: https://api.hackcheck.io/search/your-API-key/domain/domain.com
         url = f"https://api.hackcheck.io/search/{HACKCHECK_API_KEY}/domain/{domain}"
         
-        logging.info(f"[DOMAIN: {domain}] Gọi API: {url}")
+        start_time = time.time()
+        logging.info(f"[DOMAIN: {domain}] Bắt đầu gọi API")
         
-        # Gọi API với timeout 30 giây
-        response = requests.get(url, timeout=30)
+        # Gọi API với timeout 15 giây (giảm từ 30s)
+        response = requests.get(url, timeout=15)
+        
+        end_time = time.time()
+        request_time = end_time - start_time
         
         if response.status_code == 200:
             data = response.json()
@@ -48,24 +58,24 @@ def check_domain_hc(domain):
                     if isinstance(item, dict) and 'email' in item and item['email']:
                         emails.add(item['email'])
                 
-                logging.info(f"[DOMAIN: {domain}] [RESULTS: {len(data['results'])}] [EMAILS: {emails}]")
+                logging.info(f"[DOMAIN: {domain}] [TIME: {request_time:.3f}s] [RESULTS: {len(data['results'])}] [EMAILS: {emails}]")
                 return emails
             else:
-                logging.warning(f"[DOMAIN: {domain}] Response không có cấu trúc 'results': {data}")
+                logging.warning(f"[DOMAIN: {domain}] [TIME: {request_time:.3f}s] Response không có cấu trúc 'results': {data}")
                 return set()
                 
         elif response.status_code == 429:
-            logging.warning(f"[DOMAIN: {domain}] Rate limit hit (429)")
+            logging.warning(f"[DOMAIN: {domain}] [TIME: {request_time:.3f}s] Rate limit hit (429)")
             return set()
         elif response.status_code == 401:
-            logging.error(f"[DOMAIN: {domain}] API key không hợp lệ (401)")
+            logging.error(f"[DOMAIN: {domain}] [TIME: {request_time:.3f}s] API key không hợp lệ (401)")
             return set()
         else:
-            logging.error(f"[DOMAIN: {domain}] HTTP {response.status_code}: {response.text}")
+            logging.error(f"[DOMAIN: {domain}] [TIME: {request_time:.3f}s] HTTP {response.status_code}: {response.text}")
             return set()
             
     except requests.exceptions.Timeout:
-        logging.error(f"[DOMAIN: {domain}] Timeout khi gọi API")
+        logging.error(f"[DOMAIN: {domain}] Timeout khi gọi API (>15s)")
         return set()
     except requests.exceptions.RequestException as e:
         logging.error(f"[DOMAIN: {domain}] Lỗi network: {e}")
@@ -97,27 +107,44 @@ def handle_document(message):
         with open(file_path, 'r') as f:
             domains = [line.strip() for line in f if line.strip()]
 
-        def process_domains(result_path):
+        def process_domains_parallel(result_path):
             # Tạo file kết quả trước khi xử lý
             with open(result_path, 'w') as f:
                 f.write("")  # Tạo file trống
             logging.info(f"Đã tạo file kết quả: {result_path}")
             
             try:
-                # Xử lý từng domain tuần tự với delay 0.1s
-                for i, domain in enumerate(domains):
-                    logging.info(f"Đang xử lý domain {i+1}/{len(domains)}: {domain}")
-                    result = check_domain_hc(domain)
-                    
-                    if isinstance(result, set) and result:
-                        with open(result_path, 'a') as f:
-                            for email in result:
-                                f.write(email + '\n')
-                    
-                    # Delay 0.1s giữa các domain để tránh rate limit
-                    time.sleep(0.1)
+                all_emails = set()
+                processed_count = 0
                 
-                logging.info(f"Hoàn thành xử lý {len(domains)} domains")
+                # Xử lý song song với ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_REQUESTS) as executor:
+                    # Tạo futures cho tất cả domains
+                    future_to_domain = {executor.submit(check_domain_hc, domain): domain for domain in domains}
+                    
+                    # Xử lý kết quả khi hoàn thành
+                    for future in as_completed(future_to_domain):
+                        domain = future_to_domain[future]
+                        processed_count += 1
+                        
+                        try:
+                            result = future.result()
+                            if isinstance(result, set) and result:
+                                all_emails.update(result)
+                                # Ghi ngay khi có kết quả
+                                with open(result_path, 'a') as f:
+                                    for email in result:
+                                        f.write(email + '\n')
+                            
+                            logging.info(f"Tiến độ: {processed_count}/{len(domains)} domains")
+                            
+                        except Exception as e:
+                            logging.error(f"Lỗi khi xử lý domain {domain}: {e}")
+                        
+                        # Delay nhỏ giữa các request để tránh rate limit
+                        time.sleep(REQUEST_DELAY)
+                
+                logging.info(f"Hoàn thành xử lý {len(domains)} domains, tìm thấy {len(all_emails)} emails")
                 return True
                 
             except Exception as e:
@@ -131,12 +158,16 @@ def handle_document(message):
         result_filename = f"found_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         result_path = os.path.join(RESULTS_DIR, result_filename)
         logging.info(f"result_path: {result_path}")
-        logging.info(f"Bắt đầu xử lý {len(domains)} domains")
+        logging.info(f"Bắt đầu xử lý {len(domains)} domains với {MAX_CONCURRENT_REQUESTS} workers")
         
-        # Xử lý domains
-        success = process_domains(result_path)
+        start_time = time.time()
         
-        logging.info(f"Kết quả xử lý: success={success}, file_exists={os.path.exists(result_path)}")
+        # Xử lý domains song song
+        success = process_domains_parallel(result_path)
+        
+        total_time = time.time() - start_time
+        
+        logging.info(f"Kết quả xử lý: success={success}, file_exists={os.path.exists(result_path)}, total_time={total_time:.2f}s")
         
         if success and os.path.exists(result_path):
             # Kiểm tra file có nội dung không
@@ -148,9 +179,9 @@ def handle_document(message):
             if content:
                 # Gửi file kết quả về cho user
                 with open(result_path, 'rb') as result_file:
-                    bot.send_document(reply_to_message_id=message.message_id, chat_id=message.chat.id, document=result_file, caption=f"Đã Xử lý thành công - Tìm thấy {len(content.split())} email")
+                    bot.send_document(reply_to_message_id=message.message_id, chat_id=message.chat.id, document=result_file, caption=f"Đã Xử lý thành công - Tìm thấy {len(content.split())} email trong {total_time:.2f}s")
             else:
-                bot.reply_to(message, "Đã xử lý xong nhưng không tìm thấy email nào.")
+                bot.reply_to(message, f"Đã xử lý xong trong {total_time:.2f}s nhưng không tìm thấy email nào.")
         else:
             bot.reply_to(message, "Có lỗi xảy ra trong quá trình xử lý. Vui lòng thử lại.")
             
