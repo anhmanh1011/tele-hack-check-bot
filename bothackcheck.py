@@ -4,9 +4,7 @@ import requests
 from datetime import datetime
 import telebot
 import json
-import asyncio
 import logging
-from hackcheck import HackCheckClient, SearchOptions, SearchFieldDomain
 
 # Đọc cấu hình từ file config.json
 with open('config.json', 'r') as config_file:
@@ -29,20 +27,54 @@ logging.basicConfig(filename='api.log', level=logging.INFO, format='%(asctime)s 
 def send_welcome(message):
     bot.reply_to(message, "Chào bạn! Gửi cho tôi một tệp TXT chứa danh sách domain (mỗi dòng một domain). Tôi sẽ kiểm tra từng domain trên HackCheck API và trả về danh sách domain đã được tìm thấy.")
 
-# Hàm kiểm tra domain sử dụng hackcheck-py
-async def check_domain_hc(client, domain):
+# Hàm kiểm tra domain trực tiếp với HackCheck API
+def check_domain_hc(domain):
     try:
-        breaches = await client.search(
-            SearchOptions(
-                field=SearchFieldDomain,
-                query=domain,
-            )
-        )
-        emails = {item.email for item in breaches.results if getattr(item, 'email', None)}
-        logging.info(f"[DOMAIN: {domain}] [RESULTS: {len(breaches.results)}] [EMAILS: {emails}]")
-        return emails
+        # URL theo format CURL: https://api.hackcheck.io/search/your-API-key/domain/domain.com
+        url = f"https://api.hackcheck.io/search/{HACKCHECK_API_KEY}/domain/{domain}"
+        
+        logging.info(f"[DOMAIN: {domain}] Gọi API: {url}")
+        
+        # Gọi API với timeout 30 giây
+        response = requests.get(url, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Kiểm tra cấu trúc response
+            if 'results' in data and isinstance(data['results'], list):
+                emails = set()
+                for item in data['results']:
+                    if isinstance(item, dict) and 'email' in item and item['email']:
+                        emails.add(item['email'])
+                
+                logging.info(f"[DOMAIN: {domain}] [RESULTS: {len(data['results'])}] [EMAILS: {emails}]")
+                return emails
+            else:
+                logging.warning(f"[DOMAIN: {domain}] Response không có cấu trúc 'results': {data}")
+                return set()
+                
+        elif response.status_code == 429:
+            logging.warning(f"[DOMAIN: {domain}] Rate limit hit (429)")
+            return set()
+        elif response.status_code == 401:
+            logging.error(f"[DOMAIN: {domain}] API key không hợp lệ (401)")
+            return set()
+        else:
+            logging.error(f"[DOMAIN: {domain}] HTTP {response.status_code}: {response.text}")
+            return set()
+            
+    except requests.exceptions.Timeout:
+        logging.error(f"[DOMAIN: {domain}] Timeout khi gọi API")
+        return set()
+    except requests.exceptions.RequestException as e:
+        logging.error(f"[DOMAIN: {domain}] Lỗi network: {e}")
+        return set()
+    except json.JSONDecodeError as e:
+        logging.error(f"[DOMAIN: {domain}] Lỗi parse JSON: {e}")
+        return set()
     except Exception as e:
-        logging.error(f"[DOMAIN: {domain}] Lỗi khi gọi hackcheck-py: {e}")
+        logging.error(f"[DOMAIN: {domain}] Lỗi không xác định: {e}")
         return set()
 
 # Xử lý tệp tin được gửi đến
@@ -65,28 +97,25 @@ def handle_document(message):
         with open(file_path, 'r') as f:
             domains = [line.strip() for line in f if line.strip()]
 
-        async def process_domains(result_path):
+        def process_domains(result_path):
             # Tạo file kết quả trước khi xử lý
             with open(result_path, 'w') as f:
                 f.write("")  # Tạo file trống
             logging.info(f"Đã tạo file kết quả: {result_path}")
             
             try:
-                # Tạo client trực tiếp
-                client = HackCheckClient(HACKCHECK_API_KEY)
-                
                 # Xử lý từng domain tuần tự với delay 0.1s
                 for i, domain in enumerate(domains):
                     logging.info(f"Đang xử lý domain {i+1}/{len(domains)}: {domain}")
-                    result = await check_domain_hc(client, domain)
+                    result = check_domain_hc(domain)
                     
                     if isinstance(result, set) and result:
                         with open(result_path, 'a') as f:
                             for email in result:
                                 f.write(email + '\n')
                     
-                    # Delay 0.1s giữa các domain
-                    await asyncio.sleep(0.1)
+                    # Delay 0.1s giữa các domain để tránh rate limit
+                    time.sleep(0.1)
                 
                 logging.info(f"Hoàn thành xử lý {len(domains)} domains")
                 return True
@@ -104,11 +133,8 @@ def handle_document(message):
         logging.info(f"result_path: {result_path}")
         logging.info(f"Bắt đầu xử lý {len(domains)} domains")
         
-        # Tạo event loop và chạy async function
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        success = loop.run_until_complete(process_domains(result_path))
-        loop.close()
+        # Xử lý domains
+        success = process_domains(result_path)
         
         logging.info(f"Kết quả xử lý: success={success}, file_exists={os.path.exists(result_path)}")
         
