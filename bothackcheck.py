@@ -9,7 +9,6 @@ import aiohttp
 import logging
 import math
 from hackcheck import HackCheckClient, SearchOptions, SearchFieldDomain
-from rate_limiter import create_rate_limiter, RateLimitConfig
 
 # Đọc cấu hình từ file config.json
 with open('config.json', 'r') as config_file:
@@ -27,27 +26,14 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 # Thiết lập logging
 logging.basicConfig(filename='api.log', level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
-# Cấu hình rate limiting
-RATE_LIMIT_CONFIG = RateLimitConfig(
-    max_requests=10,  # 10 requests
-    time_window=60.0,  # trong 60 giây
-    burst_size=5  # cho phép burst 5 requests
-)
-
 # Xử lý lệnh /start
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     bot.reply_to(message, "Chào bạn! Gửi cho tôi một tệp TXT chứa danh sách domain (mỗi dòng một domain). Tôi sẽ kiểm tra từng domain trên HackCheck API và trả về danh sách domain đã được tìm thấy.")
 
-# Hàm kiểm tra domain sử dụng hackcheck-py với rate limiting
-async def check_domain_hc(client, domain, rate_limiter):
+# Hàm kiểm tra domain sử dụng hackcheck-py
+async def check_domain_hc(client, domain):
     try:
-        # Chờ rate limiter cho phép
-        wait_time = await rate_limiter()
-        if wait_time > 0:
-            logging.info(f"[DOMAIN: {domain}] Chờ {wait_time:.2f}s do rate limit...")
-            await asyncio.sleep(wait_time)
-        
         breaches = await client.search(
             SearchOptions(
                 field=SearchFieldDomain,
@@ -83,20 +69,17 @@ def handle_document(message):
     async def process_domains(result_path):
         try:
             async with HackCheckClient(HACKCHECK_API_KEY) as client:
-                # Tạo rate limiter
-                rate_limiter = create_rate_limiter("sliding_window", RATE_LIMIT_CONFIG)
-                
-                # Xử lý từng domain với rate limiting
+                # Xử lý từng domain tuần tự với delay 0.1s
                 for i, domain in enumerate(domains):
                     logging.info(f"Đang xử lý domain {i+1}/{len(domains)}: {domain}")
-                    result = await check_domain_hc(client, domain, rate_limiter)
+                    result = await check_domain_hc(client, domain)
                     
                     if isinstance(result, set) and result:
                         with open(result_path, 'a') as f:
                             for email in result:
                                 f.write(email + '\n')
                     
-                    # Thêm delay nhỏ giữa các domain
+                    # Delay 0.1s giữa các domain
                     await asyncio.sleep(0.1)
                 
         except Exception as e:
