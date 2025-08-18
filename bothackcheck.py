@@ -87,6 +87,8 @@ def handle_document(message):
                     return True
                     
             except Exception as e:
+                print(e)
+                print(e.with_traceback())
                 logging.error(f"Lỗi khi xử lý tệp: {e}")
                 bot.reply_to(message, f"Lỗi khi xử lý tệp: {e}")
                 return False
