@@ -65,10 +65,9 @@ def handle_document(message):
             domains = [line.strip() for line in f if line.strip()]
 
         def process_domains(result_path):
-                with open(result_path, 'w') as f:
-                        f.write("")  # Tạo file trống
-                logging.info(f"Đã tạo file kết quả: {result_path}")
-
+            with open(result_path, 'w') as f:
+                    f.write("")  # Tạo file trống
+            logging.info(f"Đã tạo file kết quả: {result_path}")
             try:
                 with HackCheckClient(HACKCHECK_API_KEY) as client:
                     # Xử lý từng domain tuần tự với delay 0.1s
