@@ -4,10 +4,7 @@ import requests
 from datetime import datetime
 import telebot
 import json
-import asyncio
-import aiohttp
 import logging
-import math
 from hackcheck import HackCheckClient, SearchOptions, SearchFieldDomain
 
 # Đọc cấu hình từ file config.json
@@ -32,9 +29,9 @@ def send_welcome(message):
     bot.reply_to(message, "Chào bạn! Gửi cho tôi một tệp TXT chứa danh sách domain (mỗi dòng một domain). Tôi sẽ kiểm tra từng domain trên HackCheck API và trả về danh sách domain đã được tìm thấy.")
 
 # Hàm kiểm tra domain sử dụng hackcheck-py
-async def check_domain_hc(client, domain):
+def check_domain_hc(client, domain):
     try:
-        breaches = await client.search(
+        breaches = client.search(
             SearchOptions(
                 field=SearchFieldDomain,
                 query=domain,
@@ -66,13 +63,13 @@ def handle_document(message):
     with open(file_path, 'r') as f:
         domains = [line.strip() for line in f if line.strip()]
 
-    async def process_domains(result_path):
+    def process_domains(result_path):
         try:
-            async with HackCheckClient(HACKCHECK_API_KEY) as client:
+            with HackCheckClient(HACKCHECK_API_KEY) as client:
                 # Xử lý từng domain tuần tự với delay 0.1s
                 for i, domain in enumerate(domains):
                     logging.info(f"Đang xử lý domain {i+1}/{len(domains)}: {domain}")
-                    result = await check_domain_hc(client, domain)
+                    result = check_domain_hc(client, domain)
                     
                     if isinstance(result, set) and result:
                         with open(result_path, 'a') as f:
@@ -80,18 +77,16 @@ def handle_document(message):
                                 f.write(email + '\n')
                     
                     # Delay 0.1s giữa các domain
-                    await asyncio.sleep(0.1)
+                    time.sleep(0.1)
                 
         except Exception as e:
             logging.error(f"Lỗi khi xử lý tệp: {e}")
             bot.reply_to(message, f"Lỗi khi xử lý tệp: {e}")
             
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     result_filename = f"found_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
     result_path = os.path.join(RESULTS_DIR, result_filename)
-    loop.run_until_complete(process_domains(result_path))
+    process_domains(result_path)
 
     # Gửi file kết quả về cho user
     with open(result_path, 'rb') as result_file:
