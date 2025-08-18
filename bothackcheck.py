@@ -65,30 +65,35 @@ def handle_document(message):
             domains = [line.strip() for line in f if line.strip()]
 
         def process_domains(result_path):
+            # Tạo file kết quả trước khi xử lý
             with open(result_path, 'w') as f:
-                    f.write("")  # Tạo file trống
+                f.write("")  # Tạo file trống
             logging.info(f"Đã tạo file kết quả: {result_path}")
+            
             try:
-                with HackCheckClient(HACKCHECK_API_KEY) as client:
-                    # Xử lý từng domain tuần tự với delay 0.1s
-                    for i, domain in enumerate(domains):
-                        logging.info(f"Đang xử lý domain {i+1}/{len(domains)}: {domain}")
-                        result = check_domain_hc(client, domain)
-                        
-                        if isinstance(result, set) and result:
-                            with open(result_path, 'a') as f:
-                                for email in result:
-                                    f.write(email + '\n')
-                        
-                        # Delay 0.1s giữa các domain
-                        time.sleep(0.1)
+                # Tạo client trực tiếp, không dùng context manager
+                client = HackCheckClient(HACKCHECK_API_KEY)
+                
+                # Xử lý từng domain tuần tự với delay 0.1s
+                for i, domain in enumerate(domains):
+                    logging.info(f"Đang xử lý domain {i+1}/{len(domains)}: {domain}")
+                    result = check_domain_hc(client, domain)
                     
-                    logging.info(f"Hoàn thành xử lý {len(domains)} domains")
-                    return True
+                    if isinstance(result, set) and result:
+                        with open(result_path, 'a') as f:
+                            for email in result:
+                                f.write(email + '\n')
                     
+                    # Delay 0.1s giữa các domain
+                    time.sleep(0.1)
+                
+                logging.info(f"Hoàn thành xử lý {len(domains)} domains")
+                return True
+                
             except Exception as e:
-                print(e)
-                print(e.with_traceback())
+                print(f"Lỗi: {e}")
+                import traceback
+                print(f"Traceback: {traceback.format_exc()}")
                 logging.error(f"Lỗi khi xử lý tệp: {e}")
                 bot.reply_to(message, f"Lỗi khi xử lý tệp: {e}")
                 return False
@@ -120,8 +125,9 @@ def handle_document(message):
             bot.reply_to(message, "Có lỗi xảy ra trong quá trình xử lý. Vui lòng thử lại.")
             
     except Exception as e:
-        print(e)
-        print(e.with_traceback())
+        print(f"Lỗi chung: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         logging.error(f"Lỗi chung trong handle_document: {e}")
         bot.reply_to(message, f"Có lỗi xảy ra: {e}")
 
