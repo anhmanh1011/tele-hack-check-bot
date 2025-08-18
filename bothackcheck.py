@@ -4,6 +4,7 @@ import requests
 from datetime import datetime
 import telebot
 import json
+import asyncio
 import logging
 from hackcheck import HackCheckClient, SearchOptions, SearchFieldDomain
 
@@ -29,9 +30,9 @@ def send_welcome(message):
     bot.reply_to(message, "Chào bạn! Gửi cho tôi một tệp TXT chứa danh sách domain (mỗi dòng một domain). Tôi sẽ kiểm tra từng domain trên HackCheck API và trả về danh sách domain đã được tìm thấy.")
 
 # Hàm kiểm tra domain sử dụng hackcheck-py
-def check_domain_hc(client, domain):
+async def check_domain_hc(client, domain):
     try:
-        breaches = client.search(
+        breaches = await client.search(
             SearchOptions(
                 field=SearchFieldDomain,
                 query=domain,
@@ -53,31 +54,31 @@ def handle_document(message):
             bot.reply_to(message, "Không thể lấy đường dẫn tệp từ Telegram.")
             return
         downloaded_file = bot.download_file(file_info.file_path)
-        # print('Downloaded to {}'.format(downloaded_file))
         file_path = os.path.join(DOWNLOAD_DIR, message.document.file_name)
         with open(file_path, 'wb') as new_file:
             new_file.write(downloaded_file)
         bot.reply_to(message, f"Đã tải tệp: {message.document.file_name}")
         file_name = message.document.file_name
         print('file_name', file_name)
+        
         # Đọc danh sách tên miền từ tệp
         with open(file_path, 'r') as f:
             domains = [line.strip() for line in f if line.strip()]
 
-        def process_domains(result_path):
+        async def process_domains(result_path):
             # Tạo file kết quả trước khi xử lý
             with open(result_path, 'w') as f:
                 f.write("")  # Tạo file trống
             logging.info(f"Đã tạo file kết quả: {result_path}")
             
             try:
-                # Tạo client trực tiếp, không dùng context manager
+                # Tạo client trực tiếp
                 client = HackCheckClient(HACKCHECK_API_KEY)
                 
                 # Xử lý từng domain tuần tự với delay 0.1s
                 for i, domain in enumerate(domains):
                     logging.info(f"Đang xử lý domain {i+1}/{len(domains)}: {domain}")
-                    result = check_domain_hc(client, domain)
+                    result = await check_domain_hc(client, domain)
                     
                     if isinstance(result, set) and result:
                         with open(result_path, 'a') as f:
@@ -85,7 +86,7 @@ def handle_document(message):
                                 f.write(email + '\n')
                     
                     # Delay 0.1s giữa các domain
-                    time.sleep(0.1)
+                    await asyncio.sleep(0.1)
                 
                 logging.info(f"Hoàn thành xử lý {len(domains)} domains")
                 return True
@@ -103,8 +104,11 @@ def handle_document(message):
         logging.info(f"result_path: {result_path}")
         logging.info(f"Bắt đầu xử lý {len(domains)} domains")
         
-        # Xử lý domains và kiểm tra kết quả
-        success = process_domains(result_path)
+        # Tạo event loop và chạy async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        success = loop.run_until_complete(process_domains(result_path))
+        loop.close()
         
         logging.info(f"Kết quả xử lý: success={success}, file_exists={os.path.exists(result_path)}")
         
@@ -130,7 +134,6 @@ def handle_document(message):
         print(f"Traceback: {traceback.format_exc()}")
         logging.error(f"Lỗi chung trong handle_document: {e}")
         bot.reply_to(message, f"Có lỗi xảy ra: {e}")
-
 
 # Bắt đầu polling
 bot.remove_webhook()
