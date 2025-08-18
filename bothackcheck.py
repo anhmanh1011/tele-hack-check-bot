@@ -65,18 +65,12 @@ def handle_document(message):
             domains = [line.strip() for line in f if line.strip()]
 
         def process_domains(result_path):
-            try:
-                # Đảm bảo thư mục results tồn tại
-                os.makedirs(RESULTS_DIR, exist_ok=True)
-                logging.info(f"Thư mục results: {RESULTS_DIR}")
-                logging.info(f"Đường dẫn file kết quả: {result_path}")
-                
-                with HackCheckClient(HACKCHECK_API_KEY) as client:
-                    # Tạo file kết quả trước khi xử lý
-                    with open(result_path, 'w') as f:
+                with open(result_path, 'w') as f:
                         f.write("")  # Tạo file trống
-                    logging.info(f"Đã tạo file kết quả: {result_path}")
-                    
+                logging.info(f"Đã tạo file kết quả: {result_path}")
+
+            try:
+                with HackCheckClient(HACKCHECK_API_KEY) as client:
                     # Xử lý từng domain tuần tự với delay 0.1s
                     for i, domain in enumerate(domains):
                         logging.info(f"Đang xử lý domain {i+1}/{len(domains)}: {domain}")
