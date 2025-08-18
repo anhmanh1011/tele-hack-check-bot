@@ -66,6 +66,10 @@ def handle_document(message):
     def process_domains(result_path):
         try:
             with HackCheckClient(HACKCHECK_API_KEY) as client:
+                # Tạo file kết quả trước khi xử lý
+                with open(result_path, 'w') as f:
+                    f.write("")  # Tạo file trống
+                
                 # Xử lý từng domain tuần tự với delay 0.1s
                 for i, domain in enumerate(domains):
                     logging.info(f"Đang xử lý domain {i+1}/{len(domains)}: {domain}")
@@ -79,18 +83,33 @@ def handle_document(message):
                     # Delay 0.1s giữa các domain
                     time.sleep(0.1)
                 
+                logging.info(f"Hoàn thành xử lý {len(domains)} domains")
+                return True
+                
         except Exception as e:
             logging.error(f"Lỗi khi xử lý tệp: {e}")
             bot.reply_to(message, f"Lỗi khi xử lý tệp: {e}")
-            
+            return False
 
     result_filename = f"found_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
     result_path = os.path.join(RESULTS_DIR, result_filename)
-    process_domains(result_path)
-
-    # Gửi file kết quả về cho user
-    with open(result_path, 'rb') as result_file:
-        bot.send_document(reply_to_message_id=message.message_id, chat_id=message.chat.id, document=result_file, caption=f"Đã Xử lý thành công")
+    
+    # Xử lý domains và kiểm tra kết quả
+    success = process_domains(result_path)
+    
+    if success and os.path.exists(result_path):
+        # Kiểm tra file có nội dung không
+        with open(result_path, 'r') as f:
+            content = f.read().strip()
+        
+        if content:
+            # Gửi file kết quả về cho user
+            with open(result_path, 'rb') as result_file:
+                bot.send_document(reply_to_message_id=message.message_id, chat_id=message.chat.id, document=result_file, caption=f"Đã Xử lý thành công - Tìm thấy {len(content.split())} email")
+        else:
+            bot.reply_to(message, "Đã xử lý xong nhưng không tìm thấy email nào.")
+    else:
+        bot.reply_to(message, "Có lỗi xảy ra trong quá trình xử lý. Vui lòng thử lại.")
 
 
 # Bắt đầu polling
