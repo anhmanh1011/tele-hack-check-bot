@@ -118,6 +118,8 @@ def handle_document(message):
             bot.reply_to(message, "Có lỗi xảy ra trong quá trình xử lý. Vui lòng thử lại.")
             
     except Exception as e:
+        print(e)
+        print(e.with_traceback())
         logging.error(f"Lỗi chung trong handle_document: {e}")
         bot.reply_to(message, f"Có lỗi xảy ra: {e}")
 
