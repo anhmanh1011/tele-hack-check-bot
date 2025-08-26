@@ -35,6 +35,7 @@ def send_welcome(message):
 
 # Hàm kiểm tra domain trực tiếp với HackCheck API
 def check_domain_hc(domain):
+    time.sleep(REQUEST_DELAY)
     try:
         # URL theo format CURL: https://api.hackcheck.io/search/your-API-key/domain/domain.com
         url = f"https://api.hackcheck.io/search/{HACKCHECK_API_KEY}/domain/{domain}"
@@ -141,8 +142,7 @@ def handle_document(message):
                         except Exception as e:
                             logging.error(f"Lỗi khi xử lý domain {domain}: {e}")
                         
-                        # Delay nhỏ giữa các request để tránh rate limit
-                        time.sleep(REQUEST_DELAY)
+                        
                 
                 logging.info(f"Hoàn thành xử lý {len(domains)} domains, tìm thấy {len(all_emails)} emails")
                 return True
