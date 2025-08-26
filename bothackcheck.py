@@ -25,8 +25,8 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 logging.basicConfig(filename='api.log', level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
 # Cấu hình rate limiting
-MAX_CONCURRENT_REQUESTS = 5  # Xử lý 5 request đồng thời
-REQUEST_DELAY = 0.1  # 50ms giữa các request (cho phép 20 request/giây)
+MAX_CONCURRENT_REQUESTS = 4  # Xử lý 5 request đồng thời
+REQUEST_DELAY = 0.15  # 50ms giữa các request (cho phép 20 request/giây)
 
 # Xử lý lệnh /start
 @bot.message_handler(commands=['start'])
