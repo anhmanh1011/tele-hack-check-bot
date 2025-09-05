@@ -25,7 +25,7 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 logging.basicConfig(filename='api.log', level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
 # Cấu hình rate limiting
-MAX_CONCURRENT_REQUESTS = 4  # Xử lý 5 request đồng thời
+MAX_CONCURRENT_REQUESTS = 3  # Xử lý 5 request đồng thời
 REQUEST_DELAY = 0.15  # 50ms giữa các request (cho phép 20 request/giây)
 
 # Xử lý lệnh /start
