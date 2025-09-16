@@ -25,13 +25,26 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 logging.basicConfig(filename='api.log', level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
 # Cấu hình rate limiting
-MAX_CONCURRENT_REQUESTS = 3  # Xử lý 5 request đồng thời
-REQUEST_DELAY = 0.5  # 50ms giữa các request (cho phép 20 request/giây)
+MAX_CONCURRENT_REQUESTS = 3  # Xử lý 3 request đồng thời
+REQUEST_DELAY = 0.5  # 0.5s giữa các request (cho phép 2 request/giây)
+
+# Biến kiểm soát trạng thái xử lý
+is_processing = False
+current_processing_file = None
 
 # Xử lý lệnh /start
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     bot.reply_to(message, "Chào bạn! Gửi cho tôi một tệp TXT chứa danh sách domain (mỗi dòng một domain). Tôi sẽ kiểm tra từng domain trên HackCheck API và trả về danh sách domain đã được tìm thấy.")
+
+# Xử lý lệnh /status
+@bot.message_handler(commands=['status'])
+def check_status(message):
+    global is_processing, current_processing_file
+    if is_processing:
+        bot.reply_to(message, f"⚠️ Bot đang xử lý file: {current_processing_file}\nVui lòng chờ hoàn thành trước khi upload file mới.")
+    else:
+        bot.reply_to(message, "✅ Bot sẵn sàng nhận file mới.")
 
 # Hàm kiểm tra domain trực tiếp với HackCheck API
 def check_domain_hc(domain):
@@ -91,6 +104,13 @@ def check_domain_hc(domain):
 # Xử lý tệp tin được gửi đến
 @bot.message_handler(content_types=['document'])
 def handle_document(message):
+    global is_processing, current_processing_file
+    
+    # Kiểm tra xem có đang xử lý file khác không
+    if is_processing:
+        bot.reply_to(message, f"❌ Bot đang xử lý file: {current_processing_file}\nVui lòng chờ hoàn thành trước khi upload file mới.\nSử dụng /status để kiểm tra trạng thái.")
+        return
+    
     try:
         file_info = bot.get_file(message.document.file_id)
         if not file_info.file_path:
@@ -100,7 +120,12 @@ def handle_document(message):
         file_path = os.path.join(DOWNLOAD_DIR, message.document.file_name)
         with open(file_path, 'wb') as new_file:
             new_file.write(downloaded_file)
-        bot.reply_to(message, f"Đã tải tệp: {message.document.file_name}")
+        
+        # Đánh dấu đang xử lý
+        is_processing = True
+        current_processing_file = message.document.file_name
+        
+        bot.reply_to(message, f"✅ Đã tải tệp: {message.document.file_name}\n🔄 Bắt đầu xử lý...")
         file_name = message.document.file_name
         print('file_name', file_name)
         
@@ -109,6 +134,8 @@ def handle_document(message):
             domains = [line.strip() for line in f if line.strip()]
 
         def process_domains_parallel(result_path):
+            global is_processing, current_processing_file
+            
             # Tạo file kết quả trước khi xử lý
             with open(result_path, 'w') as f:
                 f.write("")  # Tạo file trống
@@ -137,12 +164,12 @@ def handle_document(message):
                                     for email in result:
                                         f.write(email + '\n')
                             
-                            logging.info(f"Tiến độ: {processed_count}/{len(domains)} domains")
+                            # Log tiến độ mỗi 10 domains
+                            if processed_count % 10 == 0:
+                                logging.info(f"Tiến độ: {processed_count}/{len(domains)} domains")
                             
                         except Exception as e:
                             logging.error(f"Lỗi khi xử lý domain {domain}: {e}")
-                        
-                        
                 
                 logging.info(f"Hoàn thành xử lý {len(domains)} domains, tìm thấy {len(all_emails)} emails")
                 return True
@@ -154,6 +181,10 @@ def handle_document(message):
                 logging.error(f"Lỗi khi xử lý tệp: {e}")
                 bot.reply_to(message, f"Lỗi khi xử lý tệp: {e}")
                 return False
+            finally:
+                # Reset trạng thái xử lý
+                is_processing = False
+                current_processing_file = None
 
         result_filename = f"found_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         result_path = os.path.join(RESULTS_DIR, result_filename)
@@ -179,18 +210,23 @@ def handle_document(message):
             if content:
                 # Gửi file kết quả về cho user
                 with open(result_path, 'rb') as result_file:
-                    bot.send_document(reply_to_message_id=message.message_id, chat_id=message.chat.id, document=result_file, caption=f"Đã Xử lý thành công - Tìm thấy {len(content.split())} email trong {total_time:.2f}s")
+                    bot.send_document(reply_to_message_id=message.message_id, chat_id=message.chat.id, document=result_file, caption=f"✅ Đã xử lý thành công!\n📧 Tìm thấy {len(content.split())} email\n⏱️ Thời gian: {total_time:.2f}s\n📁 File: {file_name}")
             else:
-                bot.reply_to(message, f"Đã xử lý xong trong {total_time:.2f}s nhưng không tìm thấy email nào.")
+                bot.reply_to(message, f"✅ Đã xử lý xong trong {total_time:.2f}s nhưng không tìm thấy email nào.\n📁 File: {file_name}")
         else:
-            bot.reply_to(message, "Có lỗi xảy ra trong quá trình xử lý. Vui lòng thử lại.")
+            bot.reply_to(message, f"❌ Có lỗi xảy ra trong quá trình xử lý file: {file_name}\nVui lòng thử lại.")
             
     except Exception as e:
         print(f"Lỗi chung: {e}")
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         logging.error(f"Lỗi chung trong handle_document: {e}")
-        bot.reply_to(message, f"Có lỗi xảy ra: {e}")
+        bot.reply_to(message, f"❌ Có lỗi xảy ra: {e}")
+        
+        # Reset trạng thái xử lý nếu có lỗi
+        global is_processing, current_processing_file
+        is_processing = False
+        current_processing_file = None
 
 # Bắt đầu polling
 bot.remove_webhook()
